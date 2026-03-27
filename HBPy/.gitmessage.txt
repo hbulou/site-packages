@@ -1,0 +1,11 @@
+[Titre : Résumé court de 50 caract. max]
+
+[Corps : Pourquoi ce changement ? Détails techniques si nécessaire.
+Respectez un retrait de 72 caractères par ligne.]
+
+# Rappel des types :
+# feat:     Une nouvelle fonctionnalité
+# fix:      Une correction de bug
+# docs:     Documentation seulement
+# style:    Formatage (espaces, virgules...)
+# refactor: Amélioration du code sans changer le résultat
