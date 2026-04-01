@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MoleculeManager</class>
+ <widget class="QMainWindow" name="MoleculeManager">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1125</width>
+    <height>393</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Molecule Manager</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <widget class="QPushButton" name="WD_Btn_load_molecule">
+    <property name="geometry">
+     <rect>
+      <x>746</x>
+      <y>10</y>
+      <width>111</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Load Molecule</string>
+    </property>
+   </widget>
+   <widget class="QTableView" name="WD_molecules_list">
+    <property name="geometry">
+     <rect>
+      <x>6</x>
+      <y>10</y>
+      <width>711</width>
+      <height>321</height>
+     </rect>
+    </property>
+    <property name="editTriggers">
+     <set>QAbstractItemView::AnyKeyPressed|QAbstractItemView::DoubleClicked|QAbstractItemView::EditKeyPressed|QAbstractItemView::SelectedClicked</set>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="WD_Btn_alkyl_builder">
+    <property name="geometry">
+     <rect>
+      <x>747</x>
+      <y>52</y>
+      <width>112</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Alkyl chain builder</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_2">
+    <property name="geometry">
+     <rect>
+      <x>866</x>
+      <y>60</y>
+      <width>38</width>
+      <height>17</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>SMILE:</string>
+    </property>
+   </widget>
+   <widget class="QLineEdit" name="WD_LE_smile">
+    <property name="geometry">
+     <rect>
+      <x>910</x>
+      <y>52</y>
+      <width>181</width>
+      <height>25</height>
+     </rect>
+    </property>
+   </widget>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1125</width>
+     <height>22</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

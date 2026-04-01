@@ -15,7 +15,7 @@ from OpenGL.GLU import (gluNewQuadric,gluQuadricNormals,GLU_SMOOTH,gluPerspectiv
 import math  # NEW
 import numpy
 import sys
-sys.path.append('/home/bulou/src/lib/site-packages/')
+#sys.path.append('/home/bulou/src/lib/site-packages/')
 from HBPy.Molecule.Atom import Atom,COV_RADIUS,CPK_COLOR
 from HBPy.Molecule.Crystal import Crystal
 
