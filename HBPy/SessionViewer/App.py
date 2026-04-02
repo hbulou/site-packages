@@ -15,6 +15,13 @@ from PyQt6.QtCore import pyqtSignal
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem import rdMolTransforms
+from rdkit.Chem.rdmolfiles import MolToXYZFile
+
+from HBPy.Molecule.Crystal import Crystal
+from HBPy.Molecule.molecule_session import MoleculeEntry
+import tempfile
+import os
+
 
 import logging
 # Configuration du logging
@@ -214,7 +221,26 @@ class MainApp(QMainWindow, Ui_MainWindow):
             #    QAbstractItemView.EditTrigger.SelectedClicked   # Ou clic sur sélection
             #)
             #self.atom_model.dataModified.connect(self.on_atom_data_modified)
+    def mol_to_crystal(self,mol) -> Crystal:
+        """Convertit un rdkit.Chem.Mol en Crystal via un fichier xyz temporaire."""
+    
+        # 1. Écrire le Mol dans un fichier xyz temporaire
+        with tempfile.NamedTemporaryFile(suffix=".xyz", delete=False) as tmp:
+            tmp_path = tmp.name
 
+        MolToXYZFile(mol, tmp_path)
+
+        # 2. Charger le fichier xyz dans un Crystal
+        crystal = Crystal()
+        crystal.load_file(tmp_path)
+        crystal.MassCenter()
+        crystal.get_element_distribution()
+        crystal.get_structure()
+    
+        # 3. Supprimer le fichier temporaire
+        os.remove(tmp_path)
+
+        return crystal
     def build_alkyl_chain(self):
         smiles = self.MoleculeManager.WD_LE_smile.text()
                 # 1. On crée la molécule parfaite avec tous ses H
@@ -247,7 +273,15 @@ class MainApp(QMainWindow, Ui_MainWindow):
         # sans casser notre beau zig-zag tout neuf !
         AllChem.MMFFOptimizeMolecule(mol)
         print(type(mol),dir(mol))
+        # Conversion directe en Crystal
+        crystal = self.mol_to_crystal(mol)
 
+        # Ajout à la session
+        self.session.molecules.append(
+            MoleculeEntry(len(self.session.molecules), "from_smiles", crystal)
+        )
+        self.MoleculeViewer.MoleculeDisplayArea.set_molecule(self.session.molecules[-1].molecule)
+        self.MoleculeManager.update(self.session.to_dataframe())
         #self.session.add_molecule(source=smiles,molecule=mol)
         #self.MoleculeViewer.MoleculeDisplayArea.set_molecule(self.session.molecules[-1].molecule)
         #self.MoleculeManager.update(self.session.to_dataframe())
