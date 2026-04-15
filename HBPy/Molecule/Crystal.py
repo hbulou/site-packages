@@ -1,6 +1,14 @@
+import os
 import numpy as np
+import HBPy
 from HBPy.Molecule.Tools import FileInfo
 from HBPy.Molecule.Atom import Atom
+
+import sys
+sys.path.append('./lib/')
+import abtem
+
+
 import copy
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -38,6 +46,88 @@ class Crystal:
     def __init__(self):
         self.atoms=[]
         self.status = []
+
+    def abTEM(self,config,display=False):
+        logger.info(f"TEM images directory = {config['train']['TEM_img_dir']}")
+        output_dir = config['train']['TEM_img_dir']
+        os.makedirs(output_dir, exist_ok=True)
+        # Crée une boîte vide de 10x10x10 Å
+        cellsize=config['abtem']['cell scale']*2.0*max(self.qmax[0]-self.qmin[0],
+                                                       self.qmax[1]-self.qmin[1])
+        # -------------------------- ASE part ------------------------------------
+        # pour l'instant on passe par ASE pour fournir la structure à abtem
+        import ase
+        atoms = ase.Atoms(cell=[cellsize,cellsize,cellsize], pbc=True)
+        for atm in self.atoms:
+            atoms += ase.Atom(HBPy.Molecule.Atom.Z_from_elt[atm.elt],
+                              (atm.q[0],atm.q[1],atm.q[2]))
+        atoms.center()
+        if display:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+            a=abtem.visualize.show_atoms(atoms,ax=ax1,
+                                         title="Beam view", numbering=True, merge=False)
+            a=abtem.visualize.show_atoms(atoms, ax=ax2,
+                                         plane="xz",
+                                         title="Side view", numbering=True,merge=False,
+                                         legend=True)
+            plt.show()
+        potential = abtem.Potential(atoms,
+                                    slice_thickness= config['abtem']['dz'],
+                                    sampling= config['abtem']['dx'])
+
+        # fonction d'onde électronique qui est diffusée
+        plane_wave = abtem.PlaneWave(energy = config['abtem']['energy']  )
+        exit_wave = plane_wave.multislice(potential)
+        # exécution du calcul
+        exit_wave.compute()
+        # Après avoir calculé l'onde de sortie, il faut lui appliquer les effets de l'optique
+        # du microscope et la faire atteindre le plan du détecteur à l'aide d'une
+        # fonction de transfert de modulation ( MTF ). 
+        # Pour une simulation d'imagerie TEM , on utilise généralement une fonction de transfert
+        # de contraste ( CTF ) pour la fonction de transfert de modulation ( FTM ) .
+        # La CTF peut inclure des aberrations optiques aplanétiques telles que
+        # * le défaut de mise au point,
+        # * l'aberration sphérique,
+        # * l'astigmatisme
+        # * les aberrations d'ondes cohérentes d'ordre supérieur.
+        # Elle peut également inclure des effets optiques plus complexes tels que
+        # * la distorsion de champ,
+        # * la rotation de l'image
+        # * les aberrations planaires, où les aberrations varient en fonction de la
+        # position.
+    
+        # Dans les expériences HRTEM réalistes, les fonctions d'onde doivent être amplifiées
+        # par une lentille d'objectif, ce qui introduit des aberrations et élimine de fait
+        # les grands angles de diffusion.
+        # ici on applique un flou de 50 angstreom et une ouverture d'objectif de 20 mrad
+        # exit_wave.apply_ctf(defocus=-30,
+        #                    focal_spread=40,
+        #                    semiangle_cutoff=20)#.intensity()#.show(cbar=True);
+        ctf = abtem.CTF(defocus =config['abtem']['defocus'],
+                        focal_spread =config['abtem']['focal spread'],
+                        semiangle_cutoff=config['abtem']['semiangle cutoff'])
+        image_wave = ctf.apply(exit_wave) 
+        image = image_wave.intensity()
+
+        logger.info(f"sampling={exit_wave.sampling}")
+        logger.info(f"extent={exit_wave.extent}")
+        logger.info(f"gpts={exit_wave.gpts}")
+        fig, axes = plt.subplots(1,1, figsize=(10,10),
+                                 gridspec_kw={'hspace': 0.5, 'wspace': 0.1})
+        a2=image.show(ax=axes)
+        plt.axis("off")
+        idx_img=0
+        # Sauvegarde en PNG (ou autre format suivant l’extension)
+        filename = os.path.join(config['train']['TEM_img_dir'],
+                                f"img_{idx_img:04d}.png")
+        plt.savefig(filename,
+                    dpi=150,
+                    bbox_inches='tight',
+                    transparent=True,
+                    pad_inches=0.1,
+                    facecolor='white')
+
+        
         
     def build(self,elt='Pt',a=3.92,Nx=-1,Ny=-1,Nz=-1,materials='bulk',radius=-1.0):
 
