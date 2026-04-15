@@ -22,9 +22,9 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-# ============================================================================================
+# ==========================================================================================
 # CONSTANTES DE CONFIGURATION
-# ============================================================================================
+# ==========================================================================================
 class Config:
     """Constantes de configuration de l'application."""
     
@@ -39,23 +39,46 @@ class Crystal:
         self.atoms=[]
         self.status = []
         
-    def build(self,elt='Pt',a=3.92,Nx=1,Ny=1,Nz=1):
+    def build(self,elt='Pt',a=3.92,Nx=-1,Ny=-1,Nz=-1,materials='bulk',radius=-1.0):
+
+        if Nx<0 and Ny<0 and Nz<0 and radius<0.0:
+            logger.error(f"Error in build")
+            exit()
+        
+        if radius>0.0:
+            Nx=int(2*radius/a)+1
+            Ny=Nx
+            Nz=Nx
+        mat=Crystal()
         for iz in range(Nz):
             z=iz*a
             for iy in range(Ny):
                 y=iy*a
                 for ix in range(Nx):
                     x=ix*a
+                    idx=len(mat.atoms)
+                    mat.atoms.append(Atom(elt=elt,q=np.array([x,y,z]),idx=idx)),
+                    idx=len(mat.atoms)
+                    mat.atoms.append(Atom(elt=elt,q=np.array([x+0.5*a,y+0.5*a,z]),idx=idx))
+                    idx=len(mat.atoms)
+                    mat.atoms.append(Atom(elt=elt,q=np.array([x+0.5*a,y,z+0.5*a]),idx=idx))
+                    idx=len(mat.atoms)
+                    mat.atoms.append(Atom(elt=elt,q=np.array([x,y+0.5*a,z+0.5*a]),idx=idx))
+        #mat.MassCenter()
+
+        mat.get_structure()
+        mat.status = [True]*len(mat.atoms)
+
+        if materials=='NP':
+            for i,atm in enumerate(mat.atoms):
+                d=atm.distance_from_(mat.MC)
+                if d<=radius:
                     idx=len(self.atoms)
-                    self.atoms.append(Atom(elt=elt,q=np.array([x,y,z]),idx=idx)),
-                    idx=len(self.atoms)
-                    self.atoms.append(Atom(elt=elt,q=np.array([x+0.5*a,y+0.5*a,z]),idx=idx))
-                    idx=len(self.atoms)
-                    self.atoms.append(Atom(elt=elt,q=np.array([x+0.5*a,y,z+0.5*a]),idx=idx))
-                    idx=len(self.atoms)
-                    self.atoms.append(Atom(elt=elt,q=np.array([x,y+0.5*a,z+0.5*a]),idx=idx))
-        self.MassCenter()
+                    self.atoms.append(Atom(elt=mat.atoms[i].elt,
+                                           q=mat.atoms[i].q,
+                                           idx=idx)),
         self.status = [True]*len(self.atoms)
+                    
     def core_shell(self,composition):
         self.get_element_distribution()
         self.MassCenter()
@@ -395,7 +418,8 @@ class Crystal:
         for i in range(len(self.atoms)):
             for k in range(3):
                 self.atoms[i].q[k]=self.atoms[i].q[k]-self.MC[k]
-        self.MassCenter()
+        #self.MassCenter()
+        self.get_structure()
     def save(self,prefix="crystal",fmt='xyz'):
         if fmt == 'xyz':
             f=open(prefix+'.xyz','w')
@@ -441,6 +465,35 @@ class Crystal:
                 i=i+1
 
         f.close()
+
+    def set_composition(self,composition):
+        self.get_element_distribution()
+        for elt in composition:
+            if elt not in self.pos_elt:
+                self.pos_elt[elt]=[]
+                logger.info(f"### {elt} {self.pos_elt[elt]} -> stoechiometry {len(self.pos_elt[elt])/len(self.atoms)}")
+
+        seed=0 ; random.seed(seed)
+        stoechiometry=1.0/len(composition)
+        nmin=len(self.pos_elt[composition[0]])*stoechiometry
+        idxfill=1
+        while len(self.pos_elt[composition[0]])>nmin:
+            # on choisit au hasard un des atomes de l'espèce en excés
+            n = random.randrange(0, len(self.pos_elt[composition[0]]))   # 0 à 10 (11 exclu)
+
+            if len(self.pos_elt[composition[idxfill]])>=nmin:
+                idxfill=idxfill+1
+            idx=self.pos_elt[composition[0]].pop(n)
+            self.pos_elt[composition[idxfill]].append(idx)
+            self.atoms[idx].elt=composition[idxfill]
+        self.get_element_distribution()
+        self.get_structure()
+
+
+
+
+
+        
     def transform(self,radius=1.0,O=None):
         natom=0
         if O is None:
