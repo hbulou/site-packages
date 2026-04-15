@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import HBPy
-from HBPy.Molecule.Tools import FileInfo
+from HBPy.Molecule.Tools import FileInfo, get_z_plane
 from HBPy.Molecule.Atom import Atom
 
 import sys
@@ -47,6 +47,26 @@ class Crystal:
         self.atoms=[]
         self.status = []
 
+
+        
+    def xyz2slice(self):
+        tmp=self.duplicate()
+  
+        #tmp.origin_at(origin=np.array([-10.0,-10.0,-10.0]))
+        tmp.get_structure()
+
+        logger.info(f"Number of atoms = {len(tmp.atoms)}")
+        z_coords=[]
+        for atm in tmp.atoms:
+            z_coords.append(atm.q[2])
+        zp,dzmean=get_z_plane(z_coords)    
+        logger.info(f"Number of plane(s): {len(zp)}")
+        logger.info(f"Mean interplane distance: {dzmean}")
+        logger.info(f" {zp}")
+        dz=dzmean
+
+
+        
     def abTEM(self,config,display=False):
         logger.info(f"TEM images directory = {config['train']['TEM_img_dir']}")
         output_dir = config['train']['TEM_img_dir']
@@ -74,6 +94,10 @@ class Crystal:
         potential = abtem.Potential(atoms,
                                     slice_thickness= config['abtem']['dz'],
                                     sampling= config['abtem']['dx'])
+        print(dir(potential))
+        print(potential.extent)
+        print(potential.origin)
+        print(potential.shape)
 
         # fonction d'onde électronique qui est diffusée
         plane_wave = abtem.PlaneWave(energy = config['abtem']['energy']  )
