@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import HBPy
-from HBPy.Molecule.Tools import FileInfo, get_z_plane
+from HBPy.Molecule.Tools import FileInfo
 from HBPy.Molecule.Atom import Atom
 
 import sys
@@ -49,24 +49,146 @@ class Crystal:
 
 
         
-    def xyz2slice(self):
+    def xyz2slice(self,config):
         tmp=self.duplicate()
-  
-        #tmp.origin_at(origin=np.array([-10.0,-10.0,-10.0]))
+        tmp.origin_at(origin=np.array([self.qmin[0],self.qmin[1],self.qmin[2]]))
         tmp.get_structure()
 
+
         logger.info(f"Number of atoms = {len(tmp.atoms)}")
-        z_coords=[]
-        for atm in tmp.atoms:
-            z_coords.append(atm.q[2])
-        zp,dzmean=get_z_plane(z_coords)    
-        logger.info(f"Number of plane(s): {len(zp)}")
-        logger.info(f"Mean interplane distance: {dzmean}")
-        logger.info(f" {zp}")
-        dz=dzmean
 
-
+        margin=1.0 # épaisseur de la couche de vide autour de la nanoparticule en angstroems
+        ninter={ # nombre d'intervalles entre deux positions atomiques
+            'x':20,
+            'y':20,
+            'z':1
+            }
+        sigma = 0.6  # en Å, largeur de la gaussienne ~ rayon atomique ou un peu moins
         
+        coords={}
+        peak={}
+        dpeak={}
+        Npts={}
+        d={}
+        grid={
+            'x':[],
+            'y':[]
+        }
+        for i in ['x','y','z']:
+            coords[i]=[] 
+            peak[i]=[]
+            dpeak[i]=[]
+            Npts[i]=[]
+            d[i]=[]
+        for atm in tmp.atoms:
+            for i,xyz in enumerate(['x','y','z']):
+                coords[xyz].append(atm.q[i])
+        for xyz in ['x','y','z']:
+            peak[xyz],dpeak[xyz]=HBPy.Molecule.Tools.get_peak_positions(coords[xyz],display=False,margin=margin)    
+            logger.info(f"Number of plane(s) along {xyz}: {len(peak[xyz])}")
+            logger.info(f"Mean interplane distancealong {xyz}: {dpeak[xyz]}")
+            logger.info(f" {peak[xyz]}")
+            
+
+        #x = np.linspace(0.0, self.potential.extent[0], nx)
+        #y = np.linspace(0.0, self.potential.extent[1], ny)
+        
+        for i,xyz in enumerate(['x','y','z']):
+            Npts[xyz]=(len(peak[xyz])+1)*ninter[xyz]+1
+            d[xyz]=(tmp.qmax[i]-tmp.qmin[i]+2*dpeak[xyz])/(Npts[xyz]-1)
+            logger.info(f"{xyz}: d={d[xyz]} Npts={Npts[xyz]}")
+        for i,xyz in enumerate(['x','y','z']):
+            grid[xyz]=np.linspace(tmp.qmin[i]-dpeak[xyz],tmp.qmax[i]+dpeak[xyz], Npts[xyz])
+            logger.info(f"{grid[xyz][0]} {grid[xyz][-1]} {tmp.qmax[i]+dpeak[xyz]}")
+
+        logger.info(f"{self.list_elt}")        
+        volumes = {}  # dict: espèce -> volume 3D
+        for sp in self.list_elt:
+            volumes[sp] = np.zeros((Npts['x'], Npts['y'], Npts['z']), dtype=float)
+
+        i_center={}
+        i_min={}
+        i_max={}
+        nvxl={}
+        subgrid={}
+        localgrid={ }
+        q={ }
+        d2={}
+        for xyz in ['x','y','z']:
+            nvxl[xyz] = int(3 * sigma / d[xyz])  # rayon en nombre de voxels
+        for atom in tmp.atoms:
+            sp = atom.elt
+            vol = volumes[sp]
+            #     # Indices du voisinage à affecter (±3 sigma)
+            for i,xyz in enumerate(['x','y','z']):
+                i_center[xyz] = int((atom.q[i]-tmp.qmin[i]) / d[xyz])
+                
+                i_min[xyz] = max(i_center[xyz] - nvxl[xyz], 0)
+                i_max[xyz] = min(i_center[xyz] + nvxl[xyz] + 1, Npts[xyz])
+                
+                # Sous-grille locale
+                subgrid[xyz] = grid[xyz][i_min[xyz]:i_max[xyz]]
+                logger.info(f"{i_min[xyz]} {i_center[xyz]} {i_max[xyz]}")
+            localgrid['x'], localgrid['y'],localgrid['z'] = np.meshgrid(subgrid['x'],subgrid['y'],subgrid['z'], indexing="ij")
+            for i,xyz in enumerate(['x','y','z']):
+                d2[xyz]=(localgrid[xyz]-atom.q[i])**2
+            gauss = np.exp(-(d2['x']+d2['y']+d2['z']) / (2 * sigma**2))
+            vol[i_min['x']:i_max['x'], i_min['y']:i_max['y'], i_min['z']:i_max['z']] += gauss
+
+        logger.info(f"Prob_maps images directory = {config['train']['prob_maps_img_dir']}")
+        output_dir = config['train']['prob_maps_img_dir']
+        os.makedirs(output_dir, exist_ok=True)
+        for sp in self.list_elt:
+            vol=volumes[sp]
+            # Optionnel : échelle globale fixe
+            vmin = vol.min()
+            vmax = vol.max()
+            for k in range(Npts['z']):
+                slice_z = vol[:, :, k]        # coupe dans le plan x-y
+                fig, ax = plt.subplots(figsize=(6, 6))  # carré pour être sûr
+                im = ax.imshow(
+                    slice_z.T,
+                    origin='lower',
+                    extent=[grid['x'][0],grid['x'][-1],grid['y'][0],grid['y'][-1]],
+                    cmap='viridis',
+                    vmin=vmin,
+                    vmax=vmax,
+                    interpolation='nearest',
+                    alpha=0.9
+                )
+
+                # impose ratio 1:1
+                ax.set_aspect('equal')  # x et y même échelle
+
+                # labels et titre
+                z_val=grid['z'][0]+k*d['z']
+                ax.set_title(f"Coupe à z = {z_val:.2f} Å  (k={k})")
+                ax.set_xlabel("x (Å)")
+                ax.set_ylabel("y (Å)")
+            
+                # *** SUPPRESSION DES ÉLÉMENTS GRAPHIQUES ***
+                ax.set_xticks([])   # pas de ticks x
+                ax.set_yticks([])   # pas de ticks y
+                ax.set_xlabel("")   # pas de labels
+                ax.set_ylabel("")
+                ax.set_title("")    # pas de titre
+                ax.axis('off')      # supprime l’axe et le cadre
+            
+                #fig.colorbar(im, ax=ax, label="densité")
+
+                # sauvegarde {int(self.WD_lineedit_configidx.text()):04d}
+                filename = os.path.join(output_dir, f"img_{0:04d}_{sp}_{k:04d}_{z_val:5.2f}.png")
+                plt.savefig(filename,
+                            dpi=150,
+                            bbox_inches='tight',
+                            transparent=True,
+                            pad_inches=0.1,
+                            facecolor='white')
+
+                #plt.savefig(filename, dpi=150, bbox_inches='tight')
+                plt.close(fig)
+
+
     def abTEM(self,config,display=False):
         logger.info(f"TEM images directory = {config['train']['TEM_img_dir']}")
         output_dir = config['train']['TEM_img_dir']
@@ -493,6 +615,7 @@ class Crystal:
             self.pos_elt[atm.elt].append(atm.idx)
 
         self.nb_elt_differents = len(self.element_counts)
+        #self.composition = len(self.element_counts)
 
     def get_structure(self):
         """

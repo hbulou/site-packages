@@ -74,7 +74,7 @@ class FileInfo:
 
 
 
-def get_z_plane(z_coords,display=False):
+def get_peak_positions(z_coords,display=False,margin=1.0):
     # objectif : détecter les plans cristallographiques d'une nanoparticule
     #            calculer la distance interréticulaire moyenne selon l'axe $z$.
     # 'z_coords' est un array numpy contenant toutes les cotes z
@@ -86,13 +86,19 @@ def get_z_plane(z_coords,display=False):
     # C'est une méthode non-paramétrique qui permet d'estimer la Fonction de
     # Densité de Probabilité (PDF) d'une variable aléatoire.
     density = gaussian_kde(z_coords, bw_method=0.05) # Ajuster bw_method selon le bruit
-    margin = 1.0  # Marge en Angströms
+    #margin = 1.0  # Marge en Angströms
     z_range = np.linspace(min(z_coords) - margin, max(z_coords) + margin, 1000)
 
     z_density = density(z_range)
 
         # 3. Trouver les pics
-    peaks, _ = find_peaks(z_density, height=np.max(z_density)*0.1)
+    #peaks, _ = find_peaks(z_density, height=np.max(z_density)*0.1)
+    #peaks, properties = find_peaks(z_density)
+    peaks, _ = find_peaks(z_density)
+    #peaks, properties = find_peaks(z_density, height=np.max(z_density)*0.1)
+    #logger.info(f"{properties}")
+    # Seuil de détection : Le paramètre height=np.max(z_density)*0.1 permet de filtrer le bruit et de ne retenir que les
+    #                      pics significatifs (ceux dépassant 10% du pic maximum).
     z_planes = z_range[peaks]
 
     if display:
