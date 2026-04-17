@@ -121,14 +121,19 @@ class Crystal:
             vol = volumes[sp]
             #     # Indices du voisinage à affecter (±3 sigma)
             for i,xyz in enumerate(['x','y','z']):
-                i_center[xyz] = int((atom.q[i]-tmp.qmin[i]) / d[xyz])
-                
-                i_min[xyz] = max(i_center[xyz] - nvxl[xyz], 0)
-                i_max[xyz] = min(i_center[xyz] + nvxl[xyz] + 1, Npts[xyz])
+                #i_center[xyz] = int((atom.q[i]-tmp.qmin[i])/d[xyz])
+                i_center[xyz] = int(round((atom.q[i] - (tmp.qmin[i] - dpeak[xyz])) / d[xyz]))
+                #i_min[xyz] = max(i_center[xyz] - nvxl[xyz], 0)
+                #i_max[xyz] = min(i_center[xyz] + nvxl[xyz] + 1, Npts[xyz])
+                i_min[xyz] = np.clip(i_center[xyz] - nvxl[xyz], 0, Npts[xyz] - 1)
+                i_max[xyz] = np.clip(i_center[xyz] + nvxl[xyz] + 1, 0, Npts[xyz])
+
                 
                 # Sous-grille locale
                 subgrid[xyz] = grid[xyz][i_min[xyz]:i_max[xyz]]
-                logger.info(f"{i_min[xyz]} {i_center[xyz]} {i_max[xyz]}")
+            # La commande numpy.meshgrid sert à créer des grilles de coordonnées à partir de vecteurs
+            # unidimensionnels. Elle transforme des listes de positions sur des axes (X, Y, Z...) en matrices
+            # représentant toutes les combinaisons possibles de points dans l'espace.
             localgrid['x'], localgrid['y'],localgrid['z'] = np.meshgrid(subgrid['x'],subgrid['y'],subgrid['z'], indexing="ij")
             for i,xyz in enumerate(['x','y','z']):
                 d2[xyz]=(localgrid[xyz]-atom.q[i])**2
