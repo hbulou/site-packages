@@ -4,6 +4,10 @@ import HBPy
 from HBPy.Molecule.Tools import FileInfo
 from HBPy.Molecule.Atom import Atom
 
+from mace.calculators import mace_mp
+import ase
+import ase.optimize
+
 import sys
 sys.path.append('./lib/')
 import abtem
@@ -16,6 +20,10 @@ import random
 from itertools import islice
 #from mendeleev import element
 
+from PIL import Image
+
+
+
 #me=9.1093897e-31        /* electron mass */
 ELECTRON=1.60919e-19
 #ELECTRONSTAR 1.60919 /* unité réduite*/
@@ -27,7 +35,8 @@ import logging
 # Configuration du logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s [%(levelname)s] - %(funcName)s() - %(message)s',
+    force=True
 )
 logger = logging.getLogger(__name__)
 # ==========================================================================================
@@ -41,173 +50,52 @@ class Config:
     # default seed
     SEED=0
         
-
+# ==========================================================================================
 class Crystal:
+# ==========================================================================================
+    #________________________________________________________________________________
     def __init__(self):
+    #________________________________________________________________________________
         self.atoms=[]
         self.status = []
+    #________________________________________________________________________________        
+    def add_atom(self,elt='Au',q=[0.0,0.0,0.0]):
+    #________________________________________________________________________________        
+        self.atoms.append(Atom(elt=elt,q=q))
+    #________________________________________________________________________________
+    def from_ase_Atoms(self,atoms):
+    #________________________________________________________________________________
 
-
-        
-    def xyz2slice(self,config):
-        tmp=self.duplicate()
-        tmp.origin_at(origin=np.array([self.qmin[0],self.qmin[1],self.qmin[2]]))
-        tmp.get_structure()
-
-
-        logger.info(f"Number of atoms = {len(tmp.atoms)}")
-
-        margin=1.0 # épaisseur de la couche de vide autour de la nanoparticule en angstroems
-        ninter={ # nombre d'intervalles entre deux positions atomiques
-            'x':20,
-            'y':20,
-            'z':1
-            }
-        sigma = 0.6  # en Å, largeur de la gaussienne ~ rayon atomique ou un peu moins
-        
-        coords={}
-        peak={}
-        dpeak={}
-        Npts={}
-        d={}
-        grid={
-            'x':[],
-            'y':[]
-        }
-        for i in ['x','y','z']:
-            coords[i]=[] 
-            peak[i]=[]
-            dpeak[i]=[]
-            Npts[i]=[]
-            d[i]=[]
-        for atm in tmp.atoms:
-            for i,xyz in enumerate(['x','y','z']):
-                coords[xyz].append(atm.q[i])
-        for xyz in ['x','y','z']:
-            peak[xyz],dpeak[xyz]=HBPy.Molecule.Tools.get_peak_positions(coords[xyz],display=False,margin=margin)    
-            logger.info(f"Number of plane(s) along {xyz}: {len(peak[xyz])}")
-            logger.info(f"Mean interplane distancealong {xyz}: {dpeak[xyz]}")
-            logger.info(f" {peak[xyz]}")
-            
-
-        #x = np.linspace(0.0, self.potential.extent[0], nx)
-        #y = np.linspace(0.0, self.potential.extent[1], ny)
-        
-        for i,xyz in enumerate(['x','y','z']):
-            Npts[xyz]=(len(peak[xyz])+1)*ninter[xyz]+1
-            d[xyz]=(tmp.qmax[i]-tmp.qmin[i]+2*dpeak[xyz])/(Npts[xyz]-1)
-            logger.info(f"{xyz}: d={d[xyz]} Npts={Npts[xyz]}")
-        for i,xyz in enumerate(['x','y','z']):
-            grid[xyz]=np.linspace(tmp.qmin[i]-dpeak[xyz],tmp.qmax[i]+dpeak[xyz], Npts[xyz])
-            logger.info(f"{grid[xyz][0]} {grid[xyz][-1]} {tmp.qmax[i]+dpeak[xyz]}")
-
-        logger.info(f"{self.list_elt}")        
-        volumes = {}  # dict: espèce -> volume 3D
-        for sp in self.list_elt:
-            volumes[sp] = np.zeros((Npts['x'], Npts['y'], Npts['z']), dtype=float)
-
-        i_center={}
-        i_min={}
-        i_max={}
-        nvxl={}
-        subgrid={}
-        localgrid={ }
-        q={ }
-        d2={}
-        for xyz in ['x','y','z']:
-            nvxl[xyz] = int(3 * sigma / d[xyz])  # rayon en nombre de voxels
-        for atom in tmp.atoms:
-            sp = atom.elt
-            vol = volumes[sp]
-            #     # Indices du voisinage à affecter (±3 sigma)
-            for i,xyz in enumerate(['x','y','z']):
-                #i_center[xyz] = int((atom.q[i]-tmp.qmin[i])/d[xyz])
-                i_center[xyz] = int(round((atom.q[i] - (tmp.qmin[i] - dpeak[xyz])) / d[xyz]))
-                #i_min[xyz] = max(i_center[xyz] - nvxl[xyz], 0)
-                #i_max[xyz] = min(i_center[xyz] + nvxl[xyz] + 1, Npts[xyz])
-                i_min[xyz] = np.clip(i_center[xyz] - nvxl[xyz], 0, Npts[xyz] - 1)
-                i_max[xyz] = np.clip(i_center[xyz] + nvxl[xyz] + 1, 0, Npts[xyz])
-
-                
-                # Sous-grille locale
-                subgrid[xyz] = grid[xyz][i_min[xyz]:i_max[xyz]]
-            # La commande numpy.meshgrid sert à créer des grilles de coordonnées à partir de vecteurs
-            # unidimensionnels. Elle transforme des listes de positions sur des axes (X, Y, Z...) en matrices
-            # représentant toutes les combinaisons possibles de points dans l'espace.
-            localgrid['x'], localgrid['y'],localgrid['z'] = np.meshgrid(subgrid['x'],subgrid['y'],subgrid['z'], indexing="ij")
-            for i,xyz in enumerate(['x','y','z']):
-                d2[xyz]=(localgrid[xyz]-atom.q[i])**2
-            gauss = np.exp(-(d2['x']+d2['y']+d2['z']) / (2 * sigma**2))
-            vol[i_min['x']:i_max['x'], i_min['y']:i_max['y'], i_min['z']:i_max['z']] += gauss
-
-        logger.info(f"Prob_maps images directory = {config['train']['prob_maps_img_dir']}")
-        output_dir = config['train']['prob_maps_img_dir']
-        os.makedirs(output_dir, exist_ok=True)
-        for sp in self.list_elt:
-            vol=volumes[sp]
-            # Optionnel : échelle globale fixe
-            vmin = vol.min()
-            vmax = vol.max()
-            for k in range(Npts['z']):
-                slice_z = vol[:, :, k]        # coupe dans le plan x-y
-                fig, ax = plt.subplots(figsize=(6, 6))  # carré pour être sûr
-                im = ax.imshow(
-                    slice_z.T,
-                    origin='lower',
-                    extent=[grid['x'][0],grid['x'][-1],grid['y'][0],grid['y'][-1]],
-                    cmap='viridis',
-                    vmin=vmin,
-                    vmax=vmax,
-                    interpolation='nearest',
-                    alpha=0.9
-                )
-
-                # impose ratio 1:1
-                ax.set_aspect('equal')  # x et y même échelle
-
-                # labels et titre
-                z_val=grid['z'][0]+k*d['z']
-                ax.set_title(f"Coupe à z = {z_val:.2f} Å  (k={k})")
-                ax.set_xlabel("x (Å)")
-                ax.set_ylabel("y (Å)")
-            
-                # *** SUPPRESSION DES ÉLÉMENTS GRAPHIQUES ***
-                ax.set_xticks([])   # pas de ticks x
-                ax.set_yticks([])   # pas de ticks y
-                ax.set_xlabel("")   # pas de labels
-                ax.set_ylabel("")
-                ax.set_title("")    # pas de titre
-                ax.axis('off')      # supprime l’axe et le cadre
-            
-                #fig.colorbar(im, ax=ax, label="densité")
-
-                # sauvegarde {int(self.WD_lineedit_configidx.text()):04d}
-                filename = os.path.join(output_dir, f"img_{0:04d}_{sp}_{k:04d}_{z_val:5.2f}.png")
-                plt.savefig(filename,
-                            dpi=150,
-                            bbox_inches='tight',
-                            transparent=True,
-                            pad_inches=0.1,
-                            facecolor='white')
-
-                #plt.savefig(filename, dpi=150, bbox_inches='tight')
-                plt.close(fig)
-
-
+        #for atm in self.atoms:
+        #    atoms += ase.Atom(HBPy.Molecule.Atom.Z_from_elt[atm.elt],
+                              #(atm.q[0],atm.q[1],atm.q[2]))
+        for i,atome in enumerate(atoms):
+            #logger.info(f"{self.atoms[i].elt} {type(self.atoms[i].q)} Atome {atome.symbol} en position {type(atome.position)}")
+            self.atoms[i].q=atome.position
+            #logger.info(f"{self.atoms[i].elt} {self.atoms[i].q} Atome {atome.symbol} en position {atome.position}")
+        return atoms
+    #________________________________________________________________________________
+    #________________________________________________________________________________
     def abTEM(self,config,display=False):
+    #________________________________________________________________________________
         logger.info(f"TEM images directory = {config['train']['TEM_img_dir']}")
         output_dir = config['train']['TEM_img_dir']
         os.makedirs(output_dir, exist_ok=True)
         # Crée une boîte vide de 10x10x10 Å
-        cellsize=config['abtem']['cell scale']*2.0*max(self.qmax[0]-self.qmin[0],
-                                                       self.qmax[1]-self.qmin[1])
+        #cellsize=config['abtem']['cell scale']*2.0*max(self.qmax[0]-self.qmin[0],
+        #                                               self.qmax[1]-self.qmin[1])
+        cellsize=config['image']['xmax']-config['image']['xmin']
+        logger.info(f"Cell size: {cellsize}")
         # -------------------------- ASE part ------------------------------------
         # pour l'instant on passe par ASE pour fournir la structure à abtem
-        import ase
-        atoms = ase.Atoms(cell=[cellsize,cellsize,cellsize], pbc=True)
-        for atm in self.atoms:
-            atoms += ase.Atom(HBPy.Molecule.Atom.Z_from_elt[atm.elt],
-                              (atm.q[0],atm.q[1],atm.q[2]))
+        #import ase
+        
+        atoms=self.to_ase_Atoms(cell=[cellsize,cellsize,cellsize], pbc=True)
+
+        #atoms = ase.Atoms(cell=[cellsize,cellsize,cellsize], pbc=True)
+        #for atm in self.atoms:
+        #    atoms += ase.Atom(HBPy.Molecule.Atom.Z_from_elt[atm.elt],
+        #                      (atm.q[0],atm.q[1],atm.q[2]))
         atoms.center()
         if display:
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
@@ -218,13 +106,14 @@ class Crystal:
                                          title="Side view", numbering=True,merge=False,
                                          legend=True)
             plt.show()
+        logger.info(f"slice_thickness= {config['abtem']['dz']}  sampling={config['abtem']['dx']}")
         potential = abtem.Potential(atoms,
                                     slice_thickness= config['abtem']['dz'],
                                     sampling= config['abtem']['dx'])
-        print(dir(potential))
-        print(potential.extent)
-        print(potential.origin)
-        print(potential.shape)
+        #print(dir(potential))
+        logger.info(f"potential extansion: {potential.extent}")
+        logger.info(f"potential origin: {potential.origin}")
+        logger.info(f"potential shape: {potential.shape}")
 
         # fonction d'onde électronique qui est diffusée
         plane_wave = abtem.PlaneWave(energy = config['abtem']['energy']  )
@@ -279,8 +168,9 @@ class Crystal:
                     facecolor='white')
 
         
-        
+    #________________________________________________________________________________        
     def build(self,elt='Pt',a=3.92,Nx=-1,Ny=-1,Nz=-1,materials='bulk',radius=-1.0):
+    #________________________________________________________________________________
 
         if Nx<0 and Ny<0 and Nz<0 and radius<0.0:
             logger.error(f"Error in build")
@@ -320,7 +210,9 @@ class Crystal:
                                            idx=idx)),
         self.status = [True]*len(self.atoms)
                     
+    #________________________________________________________________________________        
     def core_shell(self,composition):
+    #________________________________________________________________________________        
         self.get_element_distribution()
         self.MassCenter()
         self.origin_at_mass_center()
@@ -334,20 +226,26 @@ class Crystal:
         self.get_element_distribution()
 
 
+    #________________________________________________________________________________        
     def duplicate(self):
+    #________________________________________________________________________________        
         new_crystal=Crystal()
         for i in range(len(self.atoms)):
             new_crystal.atoms.append(self.atoms[i].duplicate())
         new_crystal.status = [True]*len(new_crystal.atoms)
         return new_crystal
     
+    #________________________________________________________________________________        
     def reindex(self):
+    #________________________________________________________________________________        
         i=0
         for atm in self.atoms:
             atm.idx=i
             i+=1
             
+    #________________________________________________________________________________        
     def file_info(self,filename):
+    #________________________________________________________________________________        
 
         self.filenfo = FileInfo(filename)
         print(f"# Crystal.py > loading {filename}")
@@ -411,14 +309,18 @@ class Crystal:
             # self.reindex()
             # self.status = [True]*len(self.atoms)
         
+    #________________________________________________________________________________        
     def load_file(self,filename):
+    #________________________________________________________________________________        
         self.file_info(filename)
         self.MassCenter()
         self.status = [True]*len(self.atoms)
         self.update_distances()
         self.get_element_distribution()
         self.get_structure()
+    #________________________________________________________________________________        
     def mixing(self,nexchange: int=1,seed: int=Config.SEED):
+    #________________________________________________________________________________        
         #random.seed(seed)
 
         for i in range(nexchange):
@@ -441,7 +343,9 @@ class Crystal:
             self.atoms[list_idx_exc[0]].elt=elts[1]
             self.atoms[list_idx_exc[1]].elt=elts[0]
         self.get_element_distribution()
+    #________________________________________________________________________________        
     def exchange(self):
+    #________________________________________________________________________________        
         self.get_element_distribution()
         
         elt1=self.atoms[0].elt
@@ -463,14 +367,16 @@ class Crystal:
             
         print(f"{self.list_elt}")
             
-    def add_atom(self,elt='Au',q=[0.0,0.0,0.0]):
-        self.atoms.append(Atom(elt=elt,q=q))
+    #________________________________________________________________________________        
     def rm_atom(self,idx=-1):
+    #________________________________________________________________________________        
         if idx>=0:
             del self.atoms[idx]
             print("removing ",idx)
 
+    #________________________________________________________________________________        
     def energy(self,FF,callback=None):
+    #________________________________________________________________________________        
         for atm in self.atoms:
             atm.Erep=0.0
             atm.Eattsqr=0.0
@@ -504,7 +410,9 @@ class Crystal:
             self.Epot=self.Epot+atm.Esite
             #print(atm.Esite)
             #print(atm.F)
+    #________________________________________________________________________________        
     def force(self,idx_new,FF):
+    #________________________________________________________________________________        
         for atm in self.atoms:
             atm.F[idx_new]=np.zeros(3)
         Ftot=np.zeros(3)
@@ -536,7 +444,58 @@ class Crystal:
                     atmj.F[idx_new]=atmj.F[idx_new]-fac*R
         #for atm in self.atoms:
         #    print(atm.F[idx_new],atm.F[(idx_new+1)%2])
+        
+    #________________________________________________________________________________        
+    def optimize_ase(self,tol=1.0e-12,new_step=None):
+    #________________________________________________________________________________
+
+        model_path = '/home/bulou/.cache/mace/20231203mace128L1_epoch199model'
+        
+        calc = mace_mp(model=model_path,   # chemin explicite - model='medium',
+                       device='cpu',
+                       default_dtype='float32')
+        # Charger la NP depuis le fichier XYZ sauvegardé à l'étape 1.2
+        #atoms = ase.io.read('NP.xyz')
+        atoms = self.to_ase_Atoms()
+        
+        
+        logger.info(f"Structure chargée : {len(atoms)} atomes")
+        logger.info(f"Composition : {atoms.get_chemical_formula()}")
+        
+        # Boîte de simulation avec vide autour de la NP (nécessaire pour MACE)
+        atoms.center(vacuum=10.0)
+        
+        # Attacher le calculateur
+        atoms.calc = calc
+        
+        # Energie avant minimisation
+        e_avant = atoms.get_potential_energy()
+        logger.info(f"Energie avant minimisation : {e_avant:.4f} eV")
+        logger.info(f"Soit {e_avant/len(atoms):.4f} eV/atome")
+        # Minimisation LBFGS
+        logger.info("Démarrage de la minimisation...")
+        traj_file = 'NP_minimisation.traj'
+        opt = ase.optimize.LBFGS(atoms, trajectory=traj_file, logfile='minimisation.log')
+        opt.run(fmax=0.05)   # convergence à 0.05 eV/Å sur les forces
+        
+        # Energie après minimisation
+        e_apres = atoms.get_potential_energy()
+        logger.info(f"Energie après minimisation  : {e_apres:.4f} eV")
+        logger.info(f"Soit {e_apres/len(atoms):.4f} eV/atome")
+        logger.info(f"Relaxation : {e_avant - e_apres:.4f} eV")
+        
+        # Sauvegarder la structure relaxée
+        ase.io.write('NP_relaxed.xyz', atoms)
+        logger.info("Structure relaxée sauvegardée dans NP_relaxed.xyz")
+        
+        self.from_ase_Atoms(atoms)
+        self.origin_at_mass_center()
+
+
+        
+    #________________________________________________________________________________        
     def optimize(self,tol=1.0e-12,new_step=None):
+    #________________________________________________________________________________        
         """
         new_step est une fonction callback, que l'on appel à chaque étape de l'optimisation
         pour suivre ou modifier l'exécution.
@@ -592,14 +551,10 @@ class Crystal:
         #plt.show()
         self.save(prefix="last",fmt='xyz')
 
-    def to_df(self):
-        rows = []
-        for atm in self.atoms:
-            rows.append((atm.idx,atm.elt,atm.q[0],atm.q[1],atm.q[2]))
-        df = pd.DataFrame(rows, columns=["idx","Element", "x", "y", "z"])
-        return df
     
+    #________________________________________________________________________________        
     def get_element_distribution(self):
+    #________________________________________________________________________________        
         """
         Compter les occurrences de chaque type d'élément d'un Crystal déjà existant
         Input : liste des atomes constituant le Crystal.
@@ -622,7 +577,9 @@ class Crystal:
         self.nb_elt_differents = len(self.element_counts)
         #self.composition = len(self.element_counts)
 
+    #________________________________________________________________________________        
     def get_structure(self):
+    #________________________________________________________________________________        
         """
         pour récupérer divers informations sur la structure de l'objet Crystal
         """
@@ -637,7 +594,9 @@ class Crystal:
                 if atm.q[i]>self.qmax[i]:
                     self.qmax[i]=atm.q[i]
 
-    def MassCenter(self):
+    #________________________________________________________________________________        
+    def MassCenter(self,display=False):
+    #________________________________________________________________________________        
         """ fonction calculant le centre de masse de la nanoparticule """
         self.MC=np.zeros(3)
         for i in range(len(self.atoms)):
@@ -645,24 +604,34 @@ class Crystal:
                 self.MC[k]=self.MC[k]+self.atoms[i].q[k]
         for k in range(3):
             self.MC[k]=self.MC[k]/len(self.atoms)
+        if display:
+            logger.info(f"Mass center: {self.MC}")
+    #________________________________________________________________________________        
     def move_atoms(self,idx_t,dt=1.0):
+    #________________________________________________________________________________        
         for atm in self.atoms:
             atm.q=atm.q+CONV*dt*(atm.p+0.5*atm.F[idx_t]*dt)/atm.mass
 
         self.update_distances()
         
+    #________________________________________________________________________________        
     def origin_at(self,origin=np.array([0.0,0.0,0.0])):
+    #________________________________________________________________________________        
         for i in range(len(self.atoms)):
             for k in range(3):
                 self.atoms[i].q[k]=self.atoms[i].q[k]-origin[k]
+    #________________________________________________________________________________        
     def origin_at_mass_center(self):
+    #________________________________________________________________________________        
         self.MassCenter()
         for i in range(len(self.atoms)):
             for k in range(3):
                 self.atoms[i].q[k]=self.atoms[i].q[k]-self.MC[k]
         #self.MassCenter()
         self.get_structure()
+    #________________________________________________________________________________        
     def save(self,prefix="crystal",fmt='xyz'):
+    #________________________________________________________________________________        
         if fmt == 'xyz':
             f=open(prefix+'.xyz','w')
             f.write("%d\n\n"%(len(self.atoms)))
@@ -708,7 +677,9 @@ class Crystal:
 
         f.close()
 
+    #________________________________________________________________________________        
     def set_composition(self,composition):
+    #________________________________________________________________________________        
         self.get_element_distribution()
         for elt in composition:
             if elt not in self.pos_elt:
@@ -735,8 +706,26 @@ class Crystal:
 
 
 
+    #________________________________________________________________________________
+    def to_ase_Atoms(self,cell=(0,0,0),pbc=False):
+    #________________________________________________________________________________
+        atoms = ase.Atoms(cell=cell, pbc=pbc)
+        for atm in self.atoms:
+            atoms += ase.Atom(HBPy.Molecule.Atom.Z_from_elt[atm.elt],
+                              (atm.q[0],atm.q[1],atm.q[2]))
+        return atoms
+    #________________________________________________________________________________        
+    def to_df(self):
+    #________________________________________________________________________________        
+        rows = []
+        for atm in self.atoms:
+            rows.append((atm.idx,atm.elt,atm.q[0],atm.q[1],atm.q[2]))
+        df = pd.DataFrame(rows, columns=["idx","Element", "x", "y", "z"])
+        return df
         
+    #________________________________________________________________________________        
     def transform(self,radius=1.0,O=None):
+    #________________________________________________________________________________        
         natom=0
         if O is None:
             O = self.MC
@@ -765,17 +754,9 @@ class Crystal:
         
         #print([(x,atm.q) for x,atm in zip(self.save,self.atoms) if x ==True])
         return new
-    def update_p(self,idx_new,dt=1.0,quench=False):
-        self.Ek=0.0
-        for atm in self.atoms:
-            atm.p=atm.p+0.5*dt*(atm.F[(idx_new+1)%2]+atm.F[idx_new])
-            if quench==True:
-                if np.dot(atm.F[idx_new],atm.p) <= 0:
-                    atm.p=np.zeros(3)
-            #self.Ek=self.Ek+CONV*0.5*np.dot(atm.p,atm.p)/atm.mass
-            self.Ek=self.Ek+CONV*0.5*np.linalg.norm(atm.p)**2/atm.mass
-        self.T=2*self.Ek/(3*len(self.atoms)*KB)
+    #________________________________________________________________________________        
     def update_distances(self):
+    #________________________________________________________________________________        
         for atmi in self.atoms:
             atmi.R=[]
             atmi.d=[]
@@ -792,5 +773,205 @@ class Crystal:
                     atmj.d.append(d)
                     atmj.idx_neigh.append(atmi.idx)
             #print(atmi.R)
+    #________________________________________________________________________________        
     def update_forces():
+    #________________________________________________________________________________        
         pass
+    #________________________________________________________________________________        
+    def update_p(self,idx_new,dt=1.0,quench=False):
+    #________________________________________________________________________________        
+        self.Ek=0.0
+        for atm in self.atoms:
+            atm.p=atm.p+0.5*dt*(atm.F[(idx_new+1)%2]+atm.F[idx_new])
+            if quench==True:
+                if np.dot(atm.F[idx_new],atm.p) <= 0:
+                    atm.p=np.zeros(3)
+            #self.Ek=self.Ek+CONV*0.5*np.dot(atm.p,atm.p)/atm.mass
+            self.Ek=self.Ek+CONV*0.5*np.linalg.norm(atm.p)**2/atm.mass
+        self.T=2*self.Ek/(3*len(self.atoms)*KB)
+    #________________________________________________________________________________
+    def xyz2slice(self,config):
+    #________________________________________________________________________________
+        tmp=self.duplicate()
+        tmp.origin_at(origin=np.array([self.qmin[0],self.qmin[1],self.qmin[2]]))
+        tmp.get_structure()
+
+        coords={}
+        peak={}
+        dpeak={}
+        Npts={}
+        d={}
+        grid={
+            'x':[],
+            'y':[]
+        }
+        O={
+            'x':0.0,
+            'y':0.0,
+            'z':0.0
+        }
+        
+        #
+        # on repère les plans atomiques de la nanoparticule dans les trois directions
+        # de l'espace et on calcule la distance moyenne entre deux plans, dpeak
+        #
+        for i in ['x','y','z']:
+            coords[i]=[] 
+            peak[i]=[]
+            dpeak[i]=[]
+            Npts[i]=[]
+            d[i]=[]
+        for atm in tmp.atoms:
+            for i,xyz in enumerate(['x','y','z']):
+                coords[xyz].append(atm.q[i])
+        for xyz in ['x','y','z']:
+            peak[xyz],dpeak[xyz]=HBPy.Molecule.Tools.get_peak_positions(coords[xyz],display=False,margin=1.0)    
+            logger.info(f"Number of plane(s) along {xyz}: {len(peak[xyz])}")
+            logger.info(f"Mean interplane distancealong {xyz}: {dpeak[xyz]}")
+            logger.info(f" {peak[xyz]}")
+
+        # on calcule l'intervalle de discretisation d ainsi que le nombre de points pour
+        # générer les maps selon les trois direction de l'espace
+        for xyz in ['x','y','z']:
+            d[xyz]=dpeak[xyz]/config['atomic presence probability map']['ninter'][xyz]
+            Npts[xyz]=int(round(((len(peak[xyz])+2*config['nvaccum'])-1)*dpeak[xyz]/d[xyz]))
+            logger.info(f"{xyz}: d={d[xyz]} Npts={Npts[xyz]}")
+        
+        for i,xyz in enumerate(['x','y','z']):
+            O[xyz]=tmp.qmin[i]-config['nvaccum']*dpeak[xyz]
+            grid[xyz]=np.linspace(O[xyz],
+                                  tmp.qmax[i]+config['nvaccum']*dpeak[xyz],
+                                  Npts[xyz])
+            logger.info(f"{xyz} grid ({grid[xyz][0]}, {grid[xyz][-1]}) d={d[xyz]}")
+            config['abtem'][xyz]=d[xyz]
+
+        logger.info(f"{self.list_elt}")        
+        volumes = {}  # dict: espèce -> volume 3D
+        for sp in self.list_elt:
+            volumes[sp] = np.zeros((Npts['x'], Npts['y'], Npts['z']), dtype=float)
+
+        i_center={}
+        i_min={}
+        i_max={}
+        nvxl={}
+        subgrid={}
+        localgrid={ }
+        q={ }
+        d2={}
+        for xyz in ['x','y','z']:
+            nvxl[xyz] = int(round((3 * config['atomic presence probability map']['sigma'] / d[xyz])))  # rayon en nombre de voxels
+            logger.info(f"number of voxel: {nvxl[xyz]} rloc={nvxl[xyz]*d[xyz]/2}")
+        for atom in tmp.atoms:
+            sp = atom.elt
+            vol = volumes[sp]
+            #     # Indices du voisinage à affecter (±3 sigma)
+            for i,xyz in enumerate(['x','y','z']):
+                i_center[xyz] = int(round((atom.q[i] - O[xyz]) / d[xyz]))
+                i_min[xyz] = np.clip(i_center[xyz] - nvxl[xyz], 0, Npts[xyz] - 1)
+                i_max[xyz] = np.clip(i_center[xyz] + nvxl[xyz] + 1, 0, Npts[xyz])
+
+                
+                # Sous-grille locale
+                subgrid[xyz] = grid[xyz][i_min[xyz]:i_max[xyz]]
+            # La commande numpy.meshgrid sert à créer des grilles de coordonnées à partir de vecteurs
+            # unidimensionnels. Elle transforme des listes de positions sur des axes (X, Y, Z...) en matrices
+            # représentant toutes les combinaisons possibles de points dans l'espace.
+            localgrid['x'], localgrid['y'],localgrid['z'] = np.meshgrid(subgrid['x'],subgrid['y'],subgrid['z'], indexing="ij")
+            for i,xyz in enumerate(['x','y','z']):
+                d2[xyz]=(localgrid[xyz]-atom.q[i])**2
+            gauss = np.exp(-(d2['x']+d2['y']+d2['z']) / (2 * config['atomic presence probability map']['sigma']**2))
+            vol[i_min['x']:i_max['x'], i_min['y']:i_max['y'], i_min['z']:i_max['z']] += gauss
+
+        
+        # sauvegarde des atomic presence probability maps
+        logger.info(f"Prob_maps images directory = {config['train']['prob_maps_img_dir']}")
+        output_dir = config['train']['prob_maps_img_dir']
+        os.makedirs(output_dir, exist_ok=True)
+        list_filename={}
+        for elt in config['structure']['composition']:
+            list_filename[elt]=[]
+        for sp in self.list_elt:
+            vol=volumes[sp]
+            # Optionnel : échelle globale fixe
+            vmin = vol.min()
+            vmax = vol.max()
+            for k in range(Npts['z']):
+                slice_z = vol[:, :, k]        # coupe dans le plan x-y
+                fig, ax = plt.subplots(figsize=(6, 6))  # carré pour être sûr
+                im = ax.imshow(
+                    slice_z.T,
+                    origin='lower',
+                    extent=[grid['x'][0],grid['x'][-1],grid['y'][0],grid['y'][-1]],
+                    cmap='viridis',
+                    vmin=vmin,
+                    vmax=vmax,
+                    interpolation='nearest',
+                    alpha=0.9
+                )
+
+                # impose ratio 1:1
+                ax.set_aspect('equal')  # x et y même échelle
+
+                # labels et titre
+                z_val=grid['z'][0]+k*d['z']
+                ax.set_title(f"Coupe à z = {z_val:.2f} Å  (k={k})")
+                ax.set_xlabel("x (Å)")
+                ax.set_ylabel("y (Å)")
+            
+                # *** SUPPRESSION DES ÉLÉMENTS GRAPHIQUES ***
+                ax.set_xticks([])   # pas de ticks x
+                ax.set_yticks([])   # pas de ticks y
+                ax.set_xlabel("")   # pas de labels
+                ax.set_ylabel("")
+                ax.set_title("")    # pas de titre
+                ax.axis('off')      # supprime l’axe et le cadre
+            
+                #fig.colorbar(im, ax=ax, label="densité")
+
+                # sauvegarde {int(self.WD_lineedit_configidx.text()):04d}
+                filename = os.path.join(output_dir, f"img_{0:04d}_{sp}_{k:04d}_{z_val:5.2f}.png")
+                list_filename[sp].append(filename)
+                plt.savefig(filename,
+                            dpi=150,
+                            bbox_inches='tight',
+                            transparent=True,
+                            pad_inches=0.1,
+                            facecolor='white')
+
+                #plt.savefig(filename, dpi=150, bbox_inches='tight')
+                plt.close(fig)
+        #logger.info(f"{grid['x'][0]},{grid['x'][-1]},{grid['y'][0]},{grid['y'][-1]}")
+        config['image']['xmin']=grid['x'][0]
+        config['image']['xmax']=grid['x'][-1]
+        config['image']['ymin']=grid['y'][0]
+        config['image']['ymax']=grid['y'][-1]
+        # Version compacte
+        
+        #self.create_compact_summary(config)
+        #for elt in config['structure']['composition']:
+        #    logger.info(f"{list_filename[elt]}")
+
+        nelt = len(config['structure']['composition'])
+        ncol = max([len(list_filename[elt]) for elt in config['structure']['composition']])
+        # Créer une grille d'images
+
+        images={}
+        for i, elt in enumerate(config['structure']['composition']):
+            images[elt]=[]
+            for j, filename in enumerate(list_filename[elt]):
+                logger.info(f"{filename}")
+                img = Image.open(filename)
+                images[elt].append(img)
+        img_w, img_h = images[config['structure']['composition'][0]][0].size
+        canvas_w = ncol * img_w
+        canvas_h = nelt * img_h
+        canvas = Image.new('RGB', (canvas_w, canvas_h), 'white')
+        for i, elt in enumerate(config['structure']['composition']):
+            for j, filename in enumerate(list_filename[elt]):
+                x = j * img_w
+                y = i * img_h
+                canvas.paste(images[elt][j], (x, y))
+
+        canvas.save('summary.png', dpi=(300, 300))
+
+

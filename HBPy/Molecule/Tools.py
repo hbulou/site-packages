@@ -101,19 +101,26 @@ def get_peak_positions(z_coords,display=False,margin=1.0):
     #                      pics significatifs (ceux dépassant 10% du pic maximum).
     z_planes = z_range[peaks]
 
-    if display:
-        plt.figure(figsize=(10, 6))
-        plt.plot(z_range, z_density, label='Densité (KDE)', color='blue', lw=2)
-        # Marque les pics détectés (les plans cristallins)
-        plt.plot(z_planes, z_density[peaks], "x", color='red', label='Plans détectés', markersize=10)
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(z_range, z_density, label='Densité (KDE)', color='blue', lw=2)
+    # Marque les pics détectés (les plans cristallins)
+    plt.plot(z_planes, z_density[peaks], "x", color='red', label='Plans détectés', markersize=10)
     
-        # Mise en forme scientifique
-        plt.title(f"Détection des plans atomiques (HEA) \n {len(z_planes)} plans identifiés", fontsize=14)
-        plt.xlabel("Position suivant l'axe z (Å)", fontsize=12)
-        plt.ylabel("Densité de probabilité d'atomes", fontsize=12)
-        plt.grid(alpha=0.3)
-        plt.legend()
-        plt.show()
+    # Mise en forme scientifique
+    plt.title(f"Détection des plans atomiques (HEA) \n {len(z_planes)} plans identifiés", fontsize=14)
+    plt.xlabel("Position suivant l'axe z (Å)", fontsize=12)
+    plt.ylabel("Densité de probabilité d'atomes", fontsize=12)
+    plt.grid(alpha=0.3)
+    plt.legend()
+    plt.savefig("get_peak_positions.png",
+                dpi=150,
+                bbox_inches='tight',
+                transparent=True,
+                pad_inches=0.1,
+                facecolor='white')
+
+    #plt.show()
     
     d_mean=0.0
     for i in range(len(z_planes)-1):
