@@ -1,5 +1,10 @@
 import os
 import numpy as np
+import subprocess
+import shutil
+
+
+
 import HBPy
 from HBPy.Molecule.Tools import FileInfo
 from HBPy.Molecule.Atom import Atom
@@ -78,8 +83,8 @@ class Crystal:
     #________________________________________________________________________________
     def abTEM(self,config,display=False):
     #________________________________________________________________________________
-        logger.info(f"TEM images directory = {config['train']['TEM_img_dir']}")
-        output_dir = config['train']['TEM_img_dir']
+        output_dir = f"{config['root_dir']}/{config['train']['TEM_img_dir']}"
+        logger.info(f"TEM images directory = {output_dir}")
         os.makedirs(output_dir, exist_ok=True)
         # Crée une boîte vide de 10x10x10 Å
         #cellsize=config['abtem']['cell scale']*2.0*max(self.qmax[0]-self.qmin[0],
@@ -158,8 +163,7 @@ class Crystal:
         plt.axis("off")
         idx_img=0
         # Sauvegarde en PNG (ou autre format suivant l’extension)
-        filename = os.path.join(config['train']['TEM_img_dir'],
-                                f"img_{idx_img:04d}.png")
+        filename = os.path.join(output_dir,f"img_{idx_img:04d}.png")
         plt.savefig(filename,
                     dpi=150,
                     bbox_inches='tight',
@@ -410,6 +414,89 @@ class Crystal:
             self.Epot=self.Epot+atm.Esite
             #print(atm.Esite)
             #print(atm.F)
+
+    #________________________________________________________________________________        
+    def FEFF_run(self,config):
+    #________________________________________________________________________________        
+        for pgm in config['list_pgm']:
+            logger.info(f"{100*'#'}\n{pgm}")
+            subprocess.run([config["feff_dir"]+"/"+pgm],
+                           capture_output=False, 
+                           text=True, 
+                           check=True)
+
+            
+    #________________________________________________________________________________        
+    def FEFF_create_input_file(self,
+                               config,
+                               absorber_idx:int,
+                               T:float=300.0): 
+    #________________________________________________________________________________        
+
+        output_dir = f"{config['input_save_dir']}"
+        logger.info(f"Input FEFF files directory = {output_dir}/{config['filename']}")
+        
+        
+        # Positionner l'origine sur l'atome absorbeur
+        tmp_molecule=self.duplicate()
+        tmp_molecule.origin_at(origin=self.atoms[absorber_idx].q)
+        absorber = tmp_molecule.atoms[absorber_idx]
+
+
+        with open(config['filename'], "w") as f:
+            f.write(f"TITLE {config['TITLE']}\n")
+            #     # *Cu at 190K, Debye temp 315K (Ashcroft & Mermin)
+            #     # DEBYE 190 315 0
+            f.write(f"DEBYE {T} {config['DEBYE_TEMP']} 0\n")
+            f.write(f"SCF {config['SCF_RADIUS']}\n")
+            f.write(f"EXAFS {config['EXAFS']}\n")
+            f.write(f"RPATH {config['RPATH']}\n")
+            f.write(f"EDGE {config['EDGE']}\n")
+            f.write(f"CONTROL\t1 1 1 1 1 1\n")            
+            
+            
+            list_atm={}
+            #     # Autres atomes
+            for atm in tmp_molecule.atoms:
+                if atm.idx != absorber.idx:
+                    # Calculer la distance
+                    R = atm.q - absorber.q
+                    d = np.linalg.norm(R)
+                    if d<config["RMAX"]: list_atm[atm.elt]=atm.idx
+
+
+            # Section POTENTIALS
+            f.write(f'\nPOTENTIALS\n')
+            f.write(f' {0:>4d} {HBPy.Molecule.Atom.Z_from_elt[absorber.elt]:>5d} {absorber.elt:>7s}\n')
+            #     # Liste des éléments uniques 
+            for i, elt in enumerate(self.list_elt, start=1):
+                if elt in list_atm.keys():
+                    f.write(f' {i:>4d} {HBPy.Molecule.Atom.Z_from_elt[elt]:>5d} {elt:>7s}\n')
+            # Section ATOMS
+            f.write(f'\nATOMS\n')
+            f.write(
+                f' {absorber.q[0]:>10.6f} {absorber.q[1]:>10.6f} {absorber.q[2]:>10.6f} '
+                f'{0:>4d} {absorber.elt:>5s} {0:>8.4f} (Absorbeur)\n'
+                 )
+
+            #     # Autres atomes
+            for atm in tmp_molecule.atoms:
+                if atm.idx != absorber.idx:
+                    # Calculer la distance
+                    R = atm.q - absorber.q
+                    d = np.linalg.norm(R)
+                    if d>config["RMAX"]: continue 
+                    # Trouver l'indice du potentiel
+                    ipot = self.list_elt.index(atm.elt) + 1
+                    f.write(
+                        f' {atm.q[0]:>10.6f} {atm.q[1]:>10.6f} {atm.q[2]:>10.6f} '
+                        f'{ipot:>4d} {atm.elt:>5s} {d:>8.4f}\n'
+                    )
+
+            f.write(f'END\n')
+
+        del tmp_molecule
+
     #________________________________________________________________________________        
     def force(self,idx_new,FF):
     #________________________________________________________________________________        
@@ -884,8 +971,9 @@ class Crystal:
 
         
         # sauvegarde des atomic presence probability maps
-        logger.info(f"Prob_maps images directory = {config['train']['prob_maps_img_dir']}")
-        output_dir = config['train']['prob_maps_img_dir']
+        output_dir = f"{config['root_dir']}/{config['train']['prob_maps_img_dir']}"
+
+        logger.info(f"Prob_maps images directory = {output_dir}")
         os.makedirs(output_dir, exist_ok=True)
         list_filename={}
         for elt in config['structure']['composition']:
