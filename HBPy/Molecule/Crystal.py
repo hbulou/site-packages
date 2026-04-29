@@ -451,7 +451,11 @@ class Crystal:
             f.write(f"SCF {config['SCF_RADIUS']}\n")
             f.write(f"EXAFS {config['EXAFS']}\n")
             f.write(f"RPATH {config['RPATH']}\n")
-            f.write(f"EDGE {config['EDGE']}\n")
+
+            if absorber.elt not in config['EDGE']:
+                logger.error(f"Edge of {absorber.elt} unknown!")
+                exit()
+            f.write(f"EDGE {config['EDGE'][absorber.elt]}\n")
             f.write(f"CONTROL\t1 1 1 1 1 1\n")            
             
             
@@ -717,16 +721,17 @@ class Crystal:
         #self.MassCenter()
         self.get_structure()
     #________________________________________________________________________________        
-    def save(self,prefix="crystal",fmt='xyz'):
-    #________________________________________________________________________________        
+    def save(self,prefix="crystal",fmt='xyz',directory='./'):
+    #________________________________________________________________________________
+        os.makedirs(directory, exist_ok=True)
         if fmt == 'xyz':
-            f=open(prefix+'.xyz','w')
+            f=open(f"{directory}/{prefix}.xyz",'w')
             f.write("%d\n\n"%(len(self.atoms)))
             for atom in self.atoms:
                 f.write("%2s %12.6f %12.6f %12.6f\n"%(atom.elt,atom.q[0],atom.q[1],atom.q[2]))
             f.close()
         if fmt == 'xsf':
-            f=open(prefix+'.xsf','w')
+            f=open(f"{directory}/{prefix}.xsf",'w')
             f.write(" ANIMSTEPS        1\n")
             f.write(" CRYSTAL\n")
             f.write(" PRIMVEC           1\n")
@@ -742,7 +747,7 @@ class Crystal:
             for atom in self.atoms:
                 f.write("%2s %12.6f %12.6f %12.6f\n"%(atom.elt,atom.q[0],atom.q[1],atom.q[2]))
         if fmt == 'lammps-data':
-            f=open(prefix+'.data','w')
+            f=open(f"{directory}/{prefix}.data",'w')
             f.write("\n");
             f.write("%d atoms\n"%len(self.atoms))
             f.write("1 atom types\n");
@@ -771,7 +776,7 @@ class Crystal:
         for elt in composition:
             if elt not in self.pos_elt:
                 self.pos_elt[elt]=[]
-                logger.info(f"### {elt} {self.pos_elt[elt]} -> stoechiometry {len(self.pos_elt[elt])/len(self.atoms)}")
+                #logger.info(f"### {elt} {self.pos_elt[elt]} -> stoechiometry {len(self.pos_elt[elt])/len(self.atoms)}")
 
         seed=0 ; random.seed(seed)
         stoechiometry=1.0/len(composition)

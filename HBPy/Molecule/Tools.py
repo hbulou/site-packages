@@ -3,6 +3,7 @@ from datetime import datetime
 import mimetypes
 from scipy.stats import gaussian_kde
 from scipy.signal import find_peaks
+from scipy.interpolate import interp1d
 import numpy as np
 import matplotlib.pyplot as plt
 import logging
@@ -128,3 +129,49 @@ def get_peak_positions(z_coords,display=False,margin=1.0):
         d_mean+=d
     d_mean=d_mean/(len(z_planes)-1)
     return z_planes,d_mean
+#______________________________________________________________________________________________________
+def mk_mean(series_list):
+#______________________________________________________________________________________________________
+    """
+    Méthode  : Interpolation sur une grille commune.
+    
+    Stratégie :
+    1. Trouver la plage d'énergie commune à toutes les séries
+    2. Créer une grille uniforme sur cette plage
+    3. Interpoler chaque série sur cette grille
+    4. Moyenner
+    
+    Args:
+        series_list: Liste de tuples (energy, intensity)
+    
+    Returns:
+        energy_common, intensity_mean, intensity_std
+    """
+    # Trouver la plage commune (intersection de toutes les séries)
+    energy_min = max(serie[0].min() for serie in series_list)
+    energy_max = min(serie[0].max() for serie in series_list)
+    
+    logger.info(f"Plage commune: [{energy_min:.2f}, {energy_max:.2f}]")
+    
+    # Créer une grille uniforme
+    n_points = len(series_list[0][0])  # Utilise le nombre de points de la première série
+    energy_common = np.linspace(energy_min, energy_max, n_points)
+    
+    # Interpoler chaque série sur la grille commune
+    interpolated_intensities = []
+    
+    for energy, intensity in series_list:
+        # Interpolation linéaire (ou 'cubic' pour plus de lissage)
+        f = interp1d(energy, intensity, kind='linear', fill_value='extrapolate')
+        intensity_interp = f(energy_common)
+        interpolated_intensities.append(intensity_interp)
+    
+    # Convertir en array pour calculs vectorisés
+    interpolated_intensities = np.array(interpolated_intensities)
+    
+    # Calculer moyenne et écart-type
+    intensity_mean = np.mean(interpolated_intensities, axis=0)
+    intensity_std = np.std(interpolated_intensities, axis=0)
+    
+    return energy_common, intensity_mean, intensity_std
+

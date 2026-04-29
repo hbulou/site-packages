@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1000</width>
+    <height>700</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>IPCMS Data Analysis Station - Prototype</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QMdiArea" name="mdiArea">
+      <property name="viewMode">
+       <enum>QMdiArea::SubWindowView</enum>
+      </property>
+      <property name="documentMode">
+       <bool>true</bool>
+      </property>
+      <property name="tabsClosable">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1000</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFichier">
+    <property name="title">
+     <string>Fichier</string>
+    </property>
+    <addaction name="actionNouveauTableau"/>
+    <addaction name="actionNouvellesNotes"/>
+    <addaction name="separator"/>
+    <addaction name="actionQuitter"/>
+   </widget>
+   <widget class="QMenu" name="menuFenetres">
+    <property name="title">
+     <string>Fenêtres</string>
+    </property>
+    <addaction name="actionMosaique"/>
+    <addaction name="actionCascade"/>
+   </widget>
+   <widget class="QMenu" name="menuAnalyse">
+    <property name="title">
+     <string>Analyse</string>
+    </property>
+    <addaction name="actionTracer_un_graphique"/>
+   </widget>
+   <addaction name="menuFichier"/>
+   <addaction name="menuFenetres"/>
+   <addaction name="menuAnalyse"/>
+  </widget>
+  <action name="actionNouveauTableau">
+   <property name="text">
+    <string>Nouveau Tableau (Format Ouvert)</string>
+   </property>
+   <property name="toolTip">
+    <string>Créer une nouvelle feuille de calcul type CSV/ODS</string>
+   </property>
+  </action>
+  <action name="actionNouvellesNotes">
+   <property name="text">
+    <string>Nouvelles Notes (LaTeX)</string>
+   </property>
+  </action>
+  <action name="actionMosaique">
+   <property name="text">
+    <string>Mosaïque</string>
+   </property>
+  </action>
+  <action name="actionCascade">
+   <property name="text">
+    <string>Cascade</string>
+   </property>
+  </action>
+  <action name="actionQuitter">
+   <property name="text">
+    <string>Quitter</string>
+   </property>
+  </action>
+  <action name="actionTracer_un_graphique">
+   <property name="text">
+    <string>Tracer un graphique</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
