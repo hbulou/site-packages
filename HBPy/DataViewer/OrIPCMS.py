@@ -236,7 +236,7 @@ class MaStationTravail(QtWidgets.QMainWindow):
             try:
                 # 2. Lecture du fichier .dat via Pandas (Format ouvert et pérenne )
                 # On suppose ici un séparateur tabulation ou espace fréquent en physique
-                df = pd.read_csv(file_path, sep=r'\s+', engine='python')
+                df = pd.read_csv(file_path, sep=r'\s+', engine='python',comment='#',header=None)
 
                 # 3. Affichage dans l'espace MDI
                 sub = QtWidgets.QMdiSubWindow()
