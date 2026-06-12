@@ -14,9 +14,10 @@ import ase
 import ase.optimize
 
 import sys
-sys.path.append('./lib/')
-import abtem
+#sys.path.append('./lib/')
+#import abtem
 
+import abtem
 
 import copy
 import matplotlib.pyplot as plt
