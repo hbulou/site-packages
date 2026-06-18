@@ -771,7 +771,7 @@ class Crystal:
         f.close()
 
     #________________________________________________________________________________        
-    def set_composition(self,composition):
+    def set_composition(self,composition,seed=0):
     #________________________________________________________________________________        
         self.get_element_distribution()
         for elt in composition:
@@ -779,7 +779,7 @@ class Crystal:
                 self.pos_elt[elt]=[]
                 #logger.info(f"### {elt} {self.pos_elt[elt]} -> stoechiometry {len(self.pos_elt[elt])/len(self.atoms)}")
 
-        seed=0 ; random.seed(seed)
+        random.seed(seed)
         stoechiometry=1.0/len(composition)
         nmin=len(self.pos_elt[composition[0]])*stoechiometry
         idxfill=1
@@ -927,13 +927,13 @@ class Crystal:
         # générer les maps selon les trois direction de l'espace
         for xyz in ['x','y','z']:
             d[xyz]=dpeak[xyz]/config['atomic presence probability map']['ninter'][xyz]
-            Npts[xyz]=int(round(((len(peak[xyz])+2*config['nvaccum'])-1)*dpeak[xyz]/d[xyz]))
+            Npts[xyz]=int(round(((len(peak[xyz])+2*config['NP']['nvaccum'])-1)*dpeak[xyz]/d[xyz]))
             logger.info(f"{xyz}: d={d[xyz]} Npts={Npts[xyz]}")
         
         for i,xyz in enumerate(['x','y','z']):
-            O[xyz]=tmp.qmin[i]-config['nvaccum']*dpeak[xyz]
+            O[xyz]=tmp.qmin[i]-config['NP']['nvaccum']*dpeak[xyz]
             grid[xyz]=np.linspace(O[xyz],
-                                  tmp.qmax[i]+config['nvaccum']*dpeak[xyz],
+                                  tmp.qmax[i]+config['NP']['nvaccum']*dpeak[xyz],
                                   Npts[xyz])
             logger.info(f"{xyz} grid ({grid[xyz][0]}, {grid[xyz][-1]}) d={d[xyz]}")
             config['abtem'][xyz]=d[xyz]
@@ -982,7 +982,7 @@ class Crystal:
         logger.info(f"Prob_maps images directory = {output_dir}")
         os.makedirs(output_dir, exist_ok=True)
         list_filename={}
-        for elt in config['structure']['composition']:
+        for elt in config['NP']['structure']['composition']:
             list_filename[elt]=[]
         for sp in self.list_elt:
             vol=volumes[sp]
@@ -1045,22 +1045,22 @@ class Crystal:
         #for elt in config['structure']['composition']:
         #    logger.info(f"{list_filename[elt]}")
 
-        nelt = len(config['structure']['composition'])
-        ncol = max([len(list_filename[elt]) for elt in config['structure']['composition']])
+        nelt = len(config['NP']['structure']['composition'])
+        ncol = max([len(list_filename[elt]) for elt in config['NP']['structure']['composition']])
         # Créer une grille d'images
 
         images={}
-        for i, elt in enumerate(config['structure']['composition']):
+        for i, elt in enumerate(config['NP']['structure']['composition']):
             images[elt]=[]
             for j, filename in enumerate(list_filename[elt]):
                 logger.info(f"{filename}")
                 img = Image.open(filename)
                 images[elt].append(img)
-        img_w, img_h = images[config['structure']['composition'][0]][0].size
+        img_w, img_h = images[config['NP']['structure']['composition'][0]][0].size
         canvas_w = ncol * img_w
         canvas_h = nelt * img_h
         canvas = Image.new('RGB', (canvas_w, canvas_h), 'white')
-        for i, elt in enumerate(config['structure']['composition']):
+        for i, elt in enumerate(config['NP']['structure']['composition']):
             for j, filename in enumerate(list_filename[elt]):
                 x = j * img_w
                 y = i * img_h
