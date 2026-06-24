@@ -162,9 +162,8 @@ class Crystal:
                                  gridspec_kw={'hspace': 0.5, 'wspace': 0.1})
         a2=image.show(ax=axes)
         plt.axis("off")
-        idx_img=0
         # Sauvegarde en PNG (ou autre format suivant l’extension)
-        filename = os.path.join(output_dir,f"img_{idx_img:04d}.png")
+        filename = os.path.join(output_dir,f"TEM.png")
         plt.savefig(filename,
                     dpi=150,
                     bbox_inches='tight',
