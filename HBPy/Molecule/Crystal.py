@@ -84,7 +84,7 @@ class Crystal:
     #________________________________________________________________________________
     def abTEM(self,config,display=False):
     #________________________________________________________________________________
-        output_dir = f"{config['root_dir']}/{config['train']['TEM_img_dir']}"
+        output_dir = f"{config['simul_dir']}/{config['NP']['seed']}/{config['train']['TEM_img_dir']}"
         logger.info(f"TEM images directory = {output_dir}")
         os.makedirs(output_dir, exist_ok=True)
         # Crée une boîte vide de 10x10x10 Å
@@ -976,7 +976,7 @@ class Crystal:
 
         
         # sauvegarde des atomic presence probability maps
-        output_dir = f"{config['root_dir']}/{config['train']['prob_maps_img_dir']}"
+        output_dir = f"{config['simul_dir']}/{config['NP']['seed']}/{config['train']['prob_maps_img_dir']}"
 
         logger.info(f"Prob_maps images directory = {output_dir}")
         os.makedirs(output_dir, exist_ok=True)
